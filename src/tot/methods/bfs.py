@@ -2,6 +2,7 @@ import itertools
 import numpy as np
 from functools import partial
 from tot.models import gpt
+from tot import tasks
 
 def get_value(task, x, y, n_evaluate_sample, cache_value=True):
     value_prompt = task.value_prompt_wrap(x, y)
@@ -48,17 +49,38 @@ def get_samples(task, x, y, n_generate_sample, prompt_sample, stop):
 
 def solve(args, task, idx, to_print=True):
     global gpt
+    is_nl2sql = isinstance(task, tasks.nl2sql.NL2SQLTask)
+    if is_nl2sql:
+        assert args.method_generate == 'sample' and args.method_evaluate == 'vote', \
+            f"Only support `sample` generation and `vote` evaluation for NL2SQL, but got {args.method_generate} and {args.method_evaluate}"
+
     gpt = partial(gpt, model=args.backend, temperature=args.temperature)
     print(gpt)
-    x = task.get_input(idx)  # input
+    if is_nl2sql:
+        x, question = task.get_input(idx) # schema + question, question
+    else:
+        x = task.get_input(idx)  # input
     ys = ['']  # current output candidates
     infos = []
+    finished_ys = []
     for step in range(task.steps):
         # generation
-        if args.method_generate == 'sample':
-            new_ys = [get_samples(task, x, y, args.n_generate_sample, prompt_sample=args.prompt_sample, stop=task.stops[step]) for y in ys]
-        elif args.method_generate == 'propose':
-            new_ys = [get_proposals(task, x, y) for y in ys]
+        # if args.method_generate == 'sample':
+        #     new_ys = [get_samples(task, x, y, args.n_generate_sample, prompt_sample=args.prompt_sample, stop=task.stops[step]) for y in ys]
+        # elif args.method_generate == 'propose':
+        #     new_ys = [get_proposals(task, x, y) for y in ys]
+        
+        new_ys = []
+        for y in ys:
+            if args.method_generate == 'sample':
+                new_steps = get_samples(task, x, y, args.n_generate_sample, prompt_sample=args.prompt_sample, stop=task.stops[step])
+            elif args.method_generate == 'propose':
+                new_steps = get_proposals(task, x, y)
+            
+            if is_nl2sql: # we need to concate steps
+                new_steps = [y + new_step for new_step in new_steps]
+            new_ys.extend(new_steps)
+        
         new_ys = list(itertools.chain(*new_ys))
         ids = list(range(len(new_ys)))
         # evaluation
@@ -81,10 +103,23 @@ def solve(args, task, idx, to_print=True):
             print(f'-- new_ys --: {sorted_new_ys}\n-- sol values --: {sorted_values}\n-- choices --: {select_new_ys}\n')
         
         infos.append({'step': step, 'x': x, 'ys': ys, 'new_ys': new_ys, 'values': values, 'select_new_ys': select_new_ys})
-        ys = select_new_ys
-    
+
+        if is_nl2sql: # for nl2sql task, we don't know the number of steps in advance
+            ys = []
+            for value, select_new_y in zip(values, select_new_ys):
+                if task.is_finished(question, select_new_y):
+                    finished_ys.append((select_new_y, value))
+                else:
+                    ys.append(select_new_y)
+        else: 
+            ys = select_new_ys        
+        if len(ys) == 0:
+            break 
     if to_print: 
         print(ys)
+
+    if is_nl2sql:
+        return finished_ys, {'steps': infos}
     return ys, {'steps': infos}
 
 def naive_solve(args, task, idx, to_print=True):
