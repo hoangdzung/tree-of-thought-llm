@@ -2,7 +2,7 @@ import os
 import re
 import json
 from tot.tasks.base import Task, DATA_PATH
-from tot.prompts.text import *
+from tot.prompts.nl2sql import *
 from tot.models import gpt
 
 
@@ -14,15 +14,15 @@ class NL2SQLTask(Task):
     Input Example: 
     Output Example: 
     """
-    def __init__(self, file='spider_dev.json'):
+    def __init__(self, max_steps=6, file='spider_dev.json'):
         """
         file: a text file, each line is some sentences
         """
         super().__init__()
         path = os.path.join(DATA_PATH, 'nl2sql', file)
         self.data = json.load(open(path))
-        self.steps = 10 # max_step
-        self.stops = ['\nQ :'] * self.steps
+        self.steps = max_steps # max_step
+        self.stops = ['\nQ:'] * self.steps
 
     def __len__(self) -> int:
         return len(self.data)
@@ -46,17 +46,14 @@ class NL2SQLTask(Task):
         last_generated_question = ''
         for line in y.split('\n')[::-1]: # check from the last line
             line = line.strip()
-            if line.startswith('Q :'):
-                last_generated_question = line[3:].strip()
-                break 
-            
-        if last_generated_question.lower() == question.lower():
-            return True 
+            if line.startswith('Q:'):
+                last_generated_question = line[2:].strip()
+                return last_generated_question.lower() == question.lower()
         return False 
     
     @staticmethod
     def vote_prompt_wrap(x: str, ys: list) -> str:
-        prompt = vote_prompt
+        prompt = vote_prompt + x
         for i, y in enumerate(ys, 1):
             # y = y.replace('Plan:\n', '')
             # TODO: truncate the plan part?

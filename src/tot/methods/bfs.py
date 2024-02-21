@@ -79,8 +79,7 @@ def solve(args, task, idx, to_print=True):
             
             if is_nl2sql: # we need to concate steps
                 new_steps = [y + new_step for new_step in new_steps]
-            new_ys.extend(new_steps)
-        
+            new_ys.append(new_steps)
         new_ys = list(itertools.chain(*new_ys))
         ids = list(range(len(new_ys)))
         # evaluation
@@ -109,14 +108,19 @@ def solve(args, task, idx, to_print=True):
             for value, select_new_y in zip(values, select_new_ys):
                 if task.is_finished(question, select_new_y):
                     finished_ys.append((select_new_y, value))
-                else:
-                    ys.append(select_new_y)
+                    continue
+                if not select_new_y.endswith('\n'):
+                    select_new_y += '\n'
+                ys.append(select_new_y)
         else: 
-            ys = select_new_ys        
+            ys = select_new_ys   
         if len(ys) == 0:
             break 
     if to_print: 
-        print(ys)
+        if is_nl2sql:
+            print(finished_ys)
+        else:
+            print(ys)
 
     if is_nl2sql:
         return finished_ys, {'steps': infos}

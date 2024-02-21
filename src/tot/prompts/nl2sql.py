@@ -125,5 +125,4 @@ Decomposition:
 '''
 vote_prompt = '''Given the schema, question and several choices of intermediate steps, decide which choice is most promising to lead to a correct query. Analyze each choice in detail, then conclude in the last line "The best choice is {s}", where s the integer id of the choice.
 Schema:
-{input}
 '''
